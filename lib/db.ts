@@ -63,7 +63,9 @@ export function getCachedReport(address: string): WalletReport | null {
   try {
     const db = getDb();
     const row = db
-      .prepare("SELECT report, updated_at FROM wallet_reports WHERE address = ?")
+      .prepare(
+        "SELECT report, created_at AS createdAt, updated_at AS updatedAt FROM wallet_reports WHERE address = ?"
+      )
       .get(address) as CachedReport | undefined;
 
     if (!row) return null;

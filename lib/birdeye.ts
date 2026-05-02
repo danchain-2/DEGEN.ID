@@ -12,7 +12,10 @@ import type {
 } from "./types";
 
 const BASE_URL = "https://public-api.birdeye.so";
-const LOG_FILE = path.join(process.cwd(), "api_calls.log");
+const LOG_FILE = path.join(
+  process.env.VERCEL === "1" || process.env.VERCEL_ENV ? "/tmp" : process.cwd(),
+  "api_calls.log"
+);
 
 /** Typed error for Birdeye API failures (non-ok, exhausted retries, network) */
 export class BirdeyeApiError extends Error {
