@@ -14,6 +14,18 @@ import type {
 const BASE_URL = "https://public-api.birdeye.so";
 const LOG_FILE = path.join(process.cwd(), "api_calls.log");
 
+/** Typed error for Birdeye API failures (non-ok, exhausted retries, network) */
+export class BirdeyeApiError extends Error {
+  constructor(
+    public readonly endpoint: string,
+    public readonly statusCode: number | null,
+    message: string
+  ) {
+    super(message);
+    this.name = "BirdeyeApiError";
+  }
+}
+
 let lastCallTimestamps: number[] = [];
 
 function getRateLimitRps(): number {
@@ -55,6 +67,12 @@ function getApiKey(): string | undefined {
   return process.env.BIRDEYE_API_KEY;
 }
 
+/**
+ * Core fetch wrapper for Birdeye API.
+ * Returns null ONLY when no API key is configured (demo/local mode).
+ * Throws BirdeyeApiError for any upstream failure: non-ok status,
+ * exhausted 429 retries, or network errors after all retry attempts.
+ */
 async function birdeyeFetch<T>(
   endpoint: string,
   identifier: string,
@@ -84,16 +102,24 @@ async function birdeyeFetch<T>(
       await logApiCall(endpoint, identifier, res.status);
 
       if (res.status === 429) {
+        if (attempt === retries - 1) {
+          throw new BirdeyeApiError(
+            endpoint,
+            429,
+            `Birdeye ${endpoint} rate limited after ${retries} attempts`
+          );
+        }
         const backoff = Math.pow(2, attempt) * 1000 + Math.random() * 500;
         await new Promise((resolve) => setTimeout(resolve, backoff));
         continue;
       }
 
       if (!res.ok) {
-        console.error(
+        throw new BirdeyeApiError(
+          endpoint,
+          res.status,
           `Birdeye ${endpoint} returned ${res.status}: ${res.statusText}`
         );
-        return null;
       }
 
       const json: unknown = await res.json();
@@ -107,13 +133,26 @@ async function birdeyeFetch<T>(
       }
       return json as T;
     } catch (err) {
+      if (err instanceof BirdeyeApiError) throw err;
+
       console.error(`Birdeye ${endpoint} fetch error:`, err);
-      if (attempt === retries - 1) return null;
+      if (attempt === retries - 1) {
+        throw new BirdeyeApiError(
+          endpoint,
+          null,
+          `Birdeye ${endpoint} network error after ${retries} attempts`
+        );
+      }
       const backoff = Math.pow(2, attempt) * 1000;
       await new Promise((resolve) => setTimeout(resolve, backoff));
     }
   }
-  return null;
+
+  throw new BirdeyeApiError(
+    endpoint,
+    null,
+    `Birdeye ${endpoint} failed after ${retries} attempts`
+  );
 }
 
 /** Calls /v1/wallet/token_list to fetch wallet token holdings and values */
@@ -128,8 +167,8 @@ export async function fetchWalletTokenList(
     wallet,
     { wallet }
   );
-  if (!data || !data.items) return [];
-  return data.items;
+  if (!data) return [];
+  return data.items ?? [];
 }
 
 /** Calls /v1/wallet/tx_list to fetch complete transaction history for a wallet */
@@ -152,9 +191,9 @@ export async function fetchWalletTransactions(
       wallet,
       { wallet, offset: String(offset), limit: String(limit), tx_type: "swap" }
     );
-    if (!data) break;
+    if (!data) return allTxs;
 
-    const items = data.items || data.solTransfers || [];
+    const items = data.items ?? data.solTransfers ?? [];
     if (items.length === 0) break;
     allTxs.push(...items);
     if (items.length < limit) break;
@@ -202,8 +241,8 @@ export async function fetchTokenOhlcv(
       time_to: String(timeTo),
     }
   );
-  if (!data || !data.items) return [];
-  return data.items;
+  if (!data) return [];
+  return data.items ?? [];
 }
 
 /** Calls /defi/token_security to check if tokens traded are rugged or flagged */
@@ -227,8 +266,8 @@ export async function fetchNewListings(): Promise<BirdeyeNewListing[]> {
     "global",
     { limit: "50", sort_by: "createdAt", sort_type: "desc" }
   );
-  if (!data || !data.items) return [];
-  return data.items;
+  if (!data) return [];
+  return data.items ?? [];
 }
 
 /** Fetches all wallet data from Birdeye for scoring */
@@ -263,17 +302,25 @@ export async function fetchAllWalletData(
   const thirtyDaysAgo = now - 30 * 24 * 60 * 60;
 
   for (const addr of uniqueTokens) {
-    const [overview, security, price, ohlcv] = await Promise.all([
-      fetchTokenOverview(addr),
-      fetchTokenSecurity(addr),
-      fetchTokenPrice(addr),
-      fetchTokenOhlcv(addr, thirtyDaysAgo, now),
-    ]);
+    try {
+      const [overview, security, price, ohlcv] = await Promise.all([
+        fetchTokenOverview(addr),
+        fetchTokenSecurity(addr),
+        fetchTokenPrice(addr),
+        fetchTokenOhlcv(addr, thirtyDaysAgo, now),
+      ]);
 
-    if (overview) tokenOverviews.set(addr, overview);
-    if (security) tokenSecurities.set(addr, security);
-    if (price && price.value) tokenPrices.set(addr, price.value);
-    if (ohlcv.length > 0) tokenOhlcv.set(addr, ohlcv);
+      if (overview) tokenOverviews.set(addr, overview);
+      if (security) tokenSecurities.set(addr, security);
+      if (price && price.value) tokenPrices.set(addr, price.value);
+      if (ohlcv.length > 0) tokenOhlcv.set(addr, ohlcv);
+    } catch (err) {
+      if (err instanceof BirdeyeApiError) {
+        console.error(`Skipping enrichment for token ${addr}: ${err.message}`);
+        continue;
+      }
+      throw err;
+    }
   }
 
   return {

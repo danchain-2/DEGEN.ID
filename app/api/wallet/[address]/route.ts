@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { fetchAllWalletData } from "@/lib/birdeye";
+import { fetchAllWalletData, BirdeyeApiError } from "@/lib/birdeye";
 import { scoreWallet, generateDemoReport } from "@/lib/scorer";
 import { getCachedReport, cacheReport } from "@/lib/db";
 
@@ -40,19 +40,23 @@ export async function GET(
     const walletData = await fetchAllWalletData(address);
 
     if (!walletData) {
-      const demo = generateDemoReport(address);
-      demo.demoMode = true;
-      cacheReport(demo);
-      return NextResponse.json(demo);
+      return NextResponse.json(
+        { error: "Failed to fetch wallet data." },
+        { status: 500 }
+      );
     }
 
     const report = scoreWallet(walletData, address);
     cacheReport(report);
     return NextResponse.json(report);
   } catch (err) {
+    const message =
+      err instanceof BirdeyeApiError
+        ? `Birdeye API error: ${err.message}`
+        : "Failed to analyse wallet. Please try again.";
     console.error("Wallet analysis error:", err);
     return NextResponse.json(
-      { error: "Failed to analyse wallet. Please try again." },
+      { error: message },
       { status: 500 }
     );
   }
