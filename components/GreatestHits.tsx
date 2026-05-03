@@ -16,7 +16,8 @@ function TradeCard({
     ? "0 0 24px rgba(0,255,135,0.1)"
     : "0 0 24px rgba(255,61,61,0.1)";
   const pnlColor = isBest ? "var(--accent)" : "var(--danger)";
-  const sign = trade.pnlPercent >= 0 ? "+" : "";
+  const percentSign = trade.pnlPercent >= 0 ? "+" : "";
+  const usdSign = trade.pnlUsd >= 0 ? "+" : "-";
 
   return (
     <div
@@ -43,7 +44,7 @@ function TradeCard({
         className="font-mono text-[36px] leading-none font-bold mb-4"
         style={{ color: pnlColor }}
       >
-        {sign}
+        {percentSign}
         {trade.pnlPercent.toFixed(1)}%
       </p>
       <div className="space-y-1">
@@ -55,7 +56,7 @@ function TradeCard({
             P&L
           </span>
           <span className="font-mono text-xs" style={{ color: pnlColor }}>
-            {sign}${Math.abs(trade.pnlUsd).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+            {usdSign}${Math.abs(trade.pnlUsd).toLocaleString(undefined, { maximumFractionDigits: 0 })}
           </span>
         </div>
         <div className="flex justify-between">

@@ -24,12 +24,12 @@ export async function GET(
     );
   }
 
+  const apiKey = process.env.BIRDEYE_API_KEY;
   const cached = getCachedReport(address);
-  if (cached) {
+  if (cached && (!apiKey || !cached.demoMode)) {
     return NextResponse.json(cached);
   }
 
-  const apiKey = process.env.BIRDEYE_API_KEY;
   if (!apiKey) {
     const demo = generateDemoReport(address);
     cacheReport(demo);
