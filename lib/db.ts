@@ -73,7 +73,17 @@ export function getCachedReport(address: string): WalletReport | null {
     const age = Date.now() - row.updatedAt;
     if (age > getCacheDuration()) return null;
 
-    return JSON.parse(row.report) as WalletReport;
+    const report = JSON.parse(row.report) as WalletReport;
+    if (
+      !report.demoMode &&
+      !report.isEmpty &&
+      report.stats.tokensTouched === 0 &&
+      report.stats.totalVolume === 0
+    ) {
+      return null;
+    }
+
+    return report;
   } catch {
     return null;
   }
