@@ -67,8 +67,12 @@ async function logApiCall(
 }
 
 function getApiKey(): string | undefined {
-  const apiKey = process.env.BIRDEYE_API_KEY?.trim();
-  return apiKey || undefined;
+  const rawApiKey = process.env.BIRDEYE_API_KEY?.trim();
+  if (!rawApiKey) return undefined;
+
+  const withoutEnvPrefix = rawApiKey.replace(/^BIRDEYE_API_KEY\s*=\s*/i, "").trim();
+  const withoutQuotes = withoutEnvPrefix.replace(/^['"]|['"]$/g, "").trim();
+  return withoutQuotes || undefined;
 }
 
 /**
@@ -175,12 +179,12 @@ export async function fetchWalletTokenList(
   return data.items ?? [];
 }
 
-/** Calls /v1/wallet/tx/list to fetch complete transaction history for a wallet */
+/** Calls /v1/wallet/tx_list to fetch complete transaction history for a wallet */
 export async function fetchWalletTransactions(
   wallet: string
 ): Promise<BirdeyeTransaction[]> {
   const allTxs: BirdeyeTransaction[] = [];
-  let offset = 0;
+  let before: string | undefined;
   const limit = 50;
   const maxPages = 10;
 
@@ -190,10 +194,13 @@ export async function fetchWalletTransactions(
       solTransfers?: BirdeyeTransaction[];
       [key: string]: unknown;
     }
+    const params: Record<string, string> = { wallet, limit: String(limit) };
+    if (before) params.before = before;
+
     const data = await birdeyeFetch<TxListResponse>(
-      "/v1/wallet/tx/list",
+      "/v1/wallet/tx_list",
       wallet,
-      { wallet, offset: String(offset), limit: String(limit), tx_type: "swap" }
+      params
     );
     if (!data) return allTxs;
 
@@ -201,7 +208,10 @@ export async function fetchWalletTransactions(
     if (items.length === 0) break;
     allTxs.push(...items);
     if (items.length < limit) break;
-    offset += limit;
+
+    const lastTxHash = items[items.length - 1]?.txHash;
+    if (!lastTxHash || lastTxHash === before) break;
+    before = lastTxHash;
   }
   return allTxs;
 }
