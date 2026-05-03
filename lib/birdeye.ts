@@ -67,7 +67,8 @@ async function logApiCall(
 }
 
 function getApiKey(): string | undefined {
-  return process.env.BIRDEYE_API_KEY;
+  const apiKey = process.env.BIRDEYE_API_KEY?.trim();
+  return apiKey || undefined;
 }
 
 /**
@@ -88,7 +89,6 @@ async function birdeyeFetch<T>(
   await rateLimitWait();
 
   const url = new URL(`${BASE_URL}${endpoint}`);
-  url.searchParams.set("chain", "solana");
   for (const [k, v] of Object.entries(params)) {
     url.searchParams.set(k, v);
   }
@@ -98,6 +98,7 @@ async function birdeyeFetch<T>(
       const res = await fetch(url.toString(), {
         headers: {
           "X-API-KEY": apiKey,
+          "x-chain": "solana",
           accept: "application/json",
         },
       });
