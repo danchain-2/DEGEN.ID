@@ -56,8 +56,8 @@ function buildTokenTrades(data: BirdeyeWalletData): TokenTrade[] {
     if (!trade) {
       const overview = data.tokenOverviews.get(addr);
       const security = data.tokenSecurities.get(addr);
-      const currentPrice = data.tokenPrices.get(addr) ?? 0;
       const holding = data.holdings.find((h) => h.address === addr);
+      const currentPrice = data.tokenPrices.get(addr) ?? holding?.priceUsd ?? overview?.price ?? 0;
       const isNewListing = data.newListings.some((nl) => nl.address === addr);
       const ohlcv = data.tokenOhlcv.get(addr) ?? [];
       const peakPrice = ohlcv.length > 0 ? Math.max(...ohlcv.map((c) => c.h)) : currentPrice;

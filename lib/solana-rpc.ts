@@ -3,6 +3,7 @@ import type { BirdeyeTokenHolding, BirdeyeTransaction } from "./types";
 const NATIVE_SOL_MINT = "So11111111111111111111111111111111111111112";
 const SPL_TOKEN_PROGRAM = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
 const TOKEN_2022_PROGRAM = "TokenzQdBNbLqP5VEhn6RQStH7U5FPkLczGdndbBYF77";
+const ESTIMATED_SOL_PRICE_USD = 80;
 
 function getRpcUrl(): string {
   return process.env.SOLANA_RPC_URL?.trim() || "https://api.mainnet-beta.solana.com";
@@ -72,12 +73,21 @@ interface TokenBalanceEntry {
   uiTokenAmount: ParsedTokenAmount;
 }
 
+interface ParsedAccountKey {
+  pubkey: string;
+}
+
 interface ParsedTransactionResult {
   slot: number;
-  transaction: { signatures: string[] };
+  transaction: {
+    signatures: string[];
+    message: { accountKeys: ParsedAccountKey[] };
+  };
   meta: {
     err: unknown;
     fee: number;
+    preBalances?: number[];
+    postBalances?: number[];
     preTokenBalances?: TokenBalanceEntry[];
     postTokenBalances?: TokenBalanceEntry[];
   } | null;
@@ -126,13 +136,13 @@ export async function fetchSolanaHoldings(
       decimals: 9,
       balance: lamports,
       uiAmount: lamports / 1e9,
-      valueUsd: 0,
-      priceUsd: 0,
+      valueUsd: (lamports / 1e9) * ESTIMATED_SOL_PRICE_USD,
+      priceUsd: ESTIMATED_SOL_PRICE_USD,
     });
   }
 
   const splResult = await rpcCall<GetTokenAccountsResult>(
-    "getParsedTokenAccountsByOwner",
+    "getTokenAccountsByOwner",
     [wallet, { programId: SPL_TOKEN_PROGRAM }, { encoding: "jsonParsed" }]
   );
   if (splResult?.value) {
@@ -155,7 +165,7 @@ export async function fetchSolanaHoldings(
 
   try {
     const t22Result = await rpcCall<GetTokenAccountsResult>(
-      "getParsedTokenAccountsByOwner",
+      "getTokenAccountsByOwner",
       [wallet, { programId: TOKEN_2022_PROGRAM }, { encoding: "jsonParsed" }]
     );
     if (t22Result?.value) {
@@ -198,7 +208,7 @@ export async function fetchSolanaTransactions(
     const batch = signatures.slice(i, i + BATCH);
     const results = await Promise.allSettled(
       batch.map((sig) =>
-        rpcCall<ParsedTransactionResult>("getParsedTransaction", [
+        rpcCall<ParsedTransactionResult>("getTransaction", [
           sig.signature,
           { encoding: "jsonParsed", maxSupportedTransactionVersion: 0 },
         ])
@@ -209,6 +219,33 @@ export async function fetchSolanaTransactions(
       if (result.status !== "fulfilled" || !result.value) continue;
       const tx = result.value;
       if (!tx.meta || tx.meta.err) continue;
+
+      const walletIndex = tx.transaction.message.accountKeys.findIndex(
+        (key) => key.pubkey === wallet
+      );
+      if (walletIndex >= 0) {
+        const preLamports = tx.meta.preBalances?.[walletIndex] ?? 0;
+        const postLamports = tx.meta.postBalances?.[walletIndex] ?? 0;
+        const feeLamports =
+          tx.transaction.message.accountKeys[0]?.pubkey === wallet ? tx.meta.fee : 0;
+        const netLamports = postLamports - preLamports + feeLamports;
+        const solDelta = netLamports / 1e9;
+        if (Math.abs(solDelta) > 0.000001) {
+          transactions.push({
+            txHash: tx.transaction.signatures[0],
+            blockUnixTime: tx.blockTime ?? 0,
+            from: solDelta < 0 ? wallet : "",
+            to: solDelta > 0 ? wallet : "",
+            balanceChange: solDelta,
+            tokenAddress: NATIVE_SOL_MINT,
+            symbol: "SOL",
+            side: solDelta > 0 ? "buy" : "sell",
+            price: ESTIMATED_SOL_PRICE_USD,
+            fee: tx.meta.fee / 1e9,
+            volume: Math.abs(solDelta) * ESTIMATED_SOL_PRICE_USD,
+          });
+        }
+      }
 
       const pre = tx.meta.preTokenBalances ?? [];
       const post = tx.meta.postTokenBalances ?? [];

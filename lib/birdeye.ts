@@ -397,9 +397,10 @@ export async function fetchAllWalletData(
       if (overview && !tx.symbol) {
         tx.symbol = overview.symbol;
       }
-      if (price !== undefined && price > 0 && tx.price === 0) {
-        tx.price = price;
-        tx.volume = Math.abs(tx.balanceChange) * price;
+      const fallbackPrice = price ?? overview?.price;
+      if (fallbackPrice !== undefined && fallbackPrice > 0 && tx.price === 0) {
+        tx.price = fallbackPrice;
+        tx.volume = Math.abs(tx.balanceChange) * fallbackPrice;
       }
     }
   }
