@@ -103,7 +103,7 @@ All Birdeye API calls are server-side only. The API key is never exposed to the 
 ## Setup
 
 ```bash
-git clone https://github.com/orins-tune23/DEGEN.ID.git
+git clone https://github.com/savage27z/DEGEN.ID.git
 cd DEGEN.ID
 cp .env.example .env          # Add your BIRDEYE_API_KEY
 npm install
