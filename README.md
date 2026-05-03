@@ -13,7 +13,7 @@ DEGEN.ID is a Solana wallet personality profiler. Paste any wallet address and g
 | Endpoint | Purpose |
 |---|---|
 | `/v1/wallet/token_list` | Fetch full token holdings and USD values for a wallet |
-| `/v1/wallet/tx/list` | Retrieve complete swap transaction history |
+| `/v1/wallet/tx_list` | Retrieve complete swap transaction history |
 | `/defi/token_overview` | Token metadata — liquidity, market cap, creation date |
 | `/defi/price` | Current token prices for P&L calculation |
 | `/defi/ohlcv` | Historical OHLCV candles for entry/exit timing analysis |
@@ -21,6 +21,8 @@ DEGEN.ID is a Solana wallet personality profiler. Paste any wallet address and g
 | `/defi/v2/tokens/new_listing` | Recent token listings for early entry scoring |
 
 All Birdeye API calls are server-side only. The API key is never exposed to the client. Every call is logged to `api_calls.log` with timestamp, endpoint, identifier, and status code.
+
+**Solana RPC Fallback:** If the Birdeye API key lacks paid Wallet API permissions (`/v1/wallet/*` returns 401/403), the app automatically falls back to Solana JSON-RPC for wallet holdings and recent activity, while still using Birdeye `/defi/*` endpoints for token price, metadata, security, and new listing enrichment.
 
 ---
 
@@ -115,6 +117,7 @@ npm run dev                   # → http://localhost:3000
 | Variable | Default | Description |
 |---|---|---|
 | `BIRDEYE_API_KEY` | — | Birdeye API key (required for real data; demo mode without) |
+| `SOLANA_RPC_URL` | `https://api.mainnet-beta.solana.com` | Solana JSON-RPC endpoint (used as fallback when Birdeye Wallet API is unavailable) |
 | `NEXT_PUBLIC_SITE_URL` | `https://degen-id.vercel.app/` | Public site URL for OG cards |
 | `CACHE_DURATION_MS` | `600000` | Cache TTL in ms (default 10 min) |
 | `RATE_LIMIT_RPS` | `10` | Max Birdeye API calls per second |
