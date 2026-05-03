@@ -1,0 +1,223 @@
+"use client";
+
+import { useRef, useState, useCallback } from "react";
+import type { WalletReport } from "@/lib/types";
+
+function truncateAddress(addr: string): string {
+  if (addr.length <= 8) return addr;
+  return `${addr.slice(0, 4)}...${addr.slice(-4)}`;
+}
+
+/** ShareCard — generates a 1200x630 OG card image and provides tweet copy */
+export default function ShareCard({ report }: { report: WalletReport }) {
+  const cardRef = useRef<HTMLDivElement>(null);
+  const [generating, setGenerating] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const tweetText = `just found out my solana wallet archetype. turns out i'm a ${report.archetype.name} 🤡 → degen-id.vercel.app/wallet/${report.address} #DegenID #BirdeyeAPI`;
+
+  const topScores = [...report.scores]
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 3);
+
+  const handleGenerate = useCallback(async () => {
+    if (!cardRef.current) return;
+    setGenerating(true);
+    try {
+      const html2canvas = (await import("html2canvas")).default;
+      const canvas = await html2canvas(cardRef.current, {
+        backgroundColor: "#050505",
+        scale: 2,
+        width: 1200,
+        height: 630,
+        useCORS: true,
+      });
+      const link = document.createElement("a");
+      link.download = `degen-id-${truncateAddress(report.address)}.png`;
+      link.href = canvas.toDataURL("image/png");
+      link.click();
+    } catch (err) {
+      console.error("Share card generation failed:", err);
+    } finally {
+      setGenerating(false);
+    }
+  }, [report.address]);
+
+  const handleCopyTweet = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(tweetText);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      const textarea = document.createElement("textarea");
+      textarea.value = tweetText;
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand("copy");
+      document.body.removeChild(textarea);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  }, [tweetText]);
+
+  return (
+    <section>
+      <h2
+        className="font-display text-xs uppercase tracking-display mb-8"
+        style={{ color: "var(--muted)" }}
+      >
+        SHARE YOUR REPORT
+      </h2>
+
+      <div
+        ref={cardRef}
+        className="relative overflow-hidden"
+        style={{
+          width: 1200,
+          height: 630,
+          background: "var(--background)",
+          border: "1px solid var(--border)",
+          position: "absolute",
+          left: "-9999px",
+          top: "-9999px",
+        }}
+      >
+        <div
+          className="absolute inset-0 flex flex-col justify-between p-16"
+          style={{ background: "#050505" }}
+        >
+          <div>
+            <p
+              style={{
+                fontFamily: "'Space Mono', monospace",
+                fontSize: 14,
+                color: "#404040",
+                letterSpacing: "0.08em",
+                textTransform: "uppercase",
+              }}
+            >
+              DEGEN.ID
+            </p>
+          </div>
+
+          <div>
+            <p style={{ fontSize: 80, lineHeight: 1 }}>
+              {report.archetype.emoji}
+            </p>
+            <p
+              style={{
+                fontFamily: "'Syne', sans-serif",
+                fontSize: 56,
+                fontWeight: 800,
+                color: "#f0b429",
+                letterSpacing: "0.08em",
+                textTransform: "uppercase",
+                marginTop: 16,
+              }}
+            >
+              {report.archetype.name}
+            </p>
+            <p
+              style={{
+                fontFamily: "'Space Mono', monospace",
+                fontSize: 16,
+                color: "#404040",
+                marginTop: 8,
+              }}
+            >
+              {truncateAddress(report.address)}
+            </p>
+          </div>
+
+          <div style={{ display: "flex", gap: 48 }}>
+            {topScores.map((s) => (
+              <div key={s.label}>
+                <p
+                  style={{
+                    fontFamily: "'Space Mono', monospace",
+                    fontSize: 32,
+                    fontWeight: 700,
+                    color: "#00ff87",
+                  }}
+                >
+                  {s.score}
+                </p>
+                <p
+                  style={{
+                    fontFamily: "'Space Mono', monospace",
+                    fontSize: 11,
+                    color: "#404040",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.08em",
+                  }}
+                >
+                  {s.label}
+                </p>
+              </div>
+            ))}
+          </div>
+
+          <div>
+            <p
+              style={{
+                fontFamily: "'Space Mono', monospace",
+                fontSize: 14,
+                color: "#a0a0a0",
+                fontStyle: "italic",
+              }}
+            >
+              &ldquo;{report.verdict}&rdquo;
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div className="space-y-4">
+        <button
+          onClick={handleGenerate}
+          disabled={generating}
+          className="w-full py-3 font-mono text-sm uppercase tracking-display transition-colors duration-150"
+          style={{
+            border: "1px solid var(--border)",
+            background: "transparent",
+            color: "var(--accent)",
+          }}
+          onMouseEnter={(e) => {
+            if (!generating) {
+              e.currentTarget.style.background = "var(--accent)";
+              e.currentTarget.style.color = "var(--background)";
+            }
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = "transparent";
+            e.currentTarget.style.color = "var(--accent)";
+          }}
+        >
+          {generating ? "GENERATING..." : "GENERATE REPORT CARD"}
+        </button>
+
+        <div
+          className="p-4"
+          style={{
+            border: "1px solid var(--border)",
+            background: "var(--card)",
+          }}
+        >
+          <p
+            className="font-mono text-xs mb-3"
+            style={{ color: "var(--muted)" }}
+          >
+            {tweetText}
+          </p>
+          <button
+            onClick={handleCopyTweet}
+            className="font-mono text-xs uppercase tracking-display transition-colors duration-150"
+            style={{ color: "var(--accent)" }}
+          >
+            {copied ? "COPIED ✓" : "COPY TWEET →"}
+          </button>
+        </div>
+      </div>
+    </section>
+  );
+}
