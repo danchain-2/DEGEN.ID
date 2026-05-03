@@ -226,7 +226,10 @@ export async function fetchSolanaTransactions(
       if (walletIndex >= 0) {
         const preLamports = tx.meta.preBalances?.[walletIndex] ?? 0;
         const postLamports = tx.meta.postBalances?.[walletIndex] ?? 0;
-        const solDelta = (postLamports - preLamports) / 1e9;
+        const feeLamports =
+          tx.transaction.message.accountKeys[0]?.pubkey === wallet ? tx.meta.fee : 0;
+        const netLamports = postLamports - preLamports + feeLamports;
+        const solDelta = netLamports / 1e9;
         if (Math.abs(solDelta) > 0.000001) {
           transactions.push({
             txHash: tx.transaction.signatures[0],
