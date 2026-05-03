@@ -22,6 +22,8 @@ DEGEN.ID is a Solana wallet personality profiler. Paste any wallet address and g
 
 All Birdeye API calls are server-side only. The API key is never exposed to the client. Every call is logged to `api_calls.log` with timestamp, endpoint, identifier, and status code.
 
+**Solana RPC Fallback:** If the Birdeye API key lacks paid Wallet API permissions (`/v1/wallet/*` returns 401/403), the app automatically falls back to Solana JSON-RPC for wallet holdings and recent activity, while still using Birdeye `/defi/*` endpoints for token price, metadata, security, and new listing enrichment.
+
 ---
 
 ## Scoring Dimensions
@@ -115,6 +117,7 @@ npm run dev                   # → http://localhost:3000
 | Variable | Default | Description |
 |---|---|---|
 | `BIRDEYE_API_KEY` | — | Birdeye API key (required for real data; demo mode without) |
+| `SOLANA_RPC_URL` | `https://api.mainnet-beta.solana.com` | Solana JSON-RPC endpoint (used as fallback when Birdeye Wallet API is unavailable) |
 | `NEXT_PUBLIC_SITE_URL` | `https://degen-id.vercel.app/` | Public site URL for OG cards |
 | `CACHE_DURATION_MS` | `600000` | Cache TTL in ms (default 10 min) |
 | `RATE_LIMIT_RPS` | `10` | Max Birdeye API calls per second |

@@ -10,6 +10,7 @@ import type {
   BirdeyePrice,
   BirdeyeWalletData,
 } from "./types";
+import { fetchSolanaHoldings, fetchSolanaTransactions } from "./solana-rpc";
 
 const BASE_URL = "https://public-api.birdeye.so";
 const LOG_FILE = path.join(
@@ -284,17 +285,43 @@ export async function fetchNewListings(): Promise<BirdeyeNewListing[]> {
   return data.items ?? [];
 }
 
-/** Fetches all wallet data from Birdeye for scoring */
+function isPermissionError(err: unknown): boolean {
+  return (
+    err instanceof BirdeyeApiError &&
+    (err.statusCode === 401 || err.statusCode === 403)
+  );
+}
+
+/** Fetches all wallet data from Birdeye for scoring, falling back to Solana RPC when wallet endpoints are unavailable */
 export async function fetchAllWalletData(
   wallet: string
 ): Promise<BirdeyeWalletData | null> {
   const apiKey = getApiKey();
   if (!apiKey) return null;
 
-  const [holdings, transactions] = await Promise.all([
-    fetchWalletTokenList(wallet),
-    fetchWalletTransactions(wallet),
-  ]);
+  let holdings: BirdeyeTokenHolding[];
+  let transactions: BirdeyeTransaction[];
+  let usedFallback = false;
+
+  try {
+    [holdings, transactions] = await Promise.all([
+      fetchWalletTokenList(wallet),
+      fetchWalletTransactions(wallet),
+    ]);
+  } catch (err) {
+    if (isPermissionError(err)) {
+      console.warn(
+        `Birdeye wallet endpoints returned ${(err as BirdeyeApiError).statusCode}; falling back to Solana RPC`
+      );
+      [holdings, transactions] = await Promise.all([
+        fetchSolanaHoldings(wallet),
+        fetchSolanaTransactions(wallet),
+      ]);
+      usedFallback = true;
+    } else {
+      throw err;
+    }
+  }
 
   let newListings: BirdeyeNewListing[] = [];
   try {
@@ -344,6 +371,36 @@ export async function fetchAllWalletData(
         continue;
       }
       throw err;
+    }
+  }
+
+  if (usedFallback) {
+    for (const h of holdings) {
+      const overview = tokenOverviews.get(h.address);
+      const price = tokenPrices.get(h.address);
+      if (overview) {
+        if (!h.symbol) h.symbol = overview.symbol;
+        if (!h.name) h.name = overview.name;
+      }
+      if (price !== undefined && price > 0) {
+        h.priceUsd = price;
+        h.valueUsd = h.uiAmount * price;
+      } else if (overview && overview.price > 0) {
+        h.priceUsd = overview.price;
+        h.valueUsd = h.uiAmount * overview.price;
+      }
+    }
+
+    for (const tx of transactions) {
+      const overview = tokenOverviews.get(tx.tokenAddress);
+      const price = tokenPrices.get(tx.tokenAddress);
+      if (overview && !tx.symbol) {
+        tx.symbol = overview.symbol;
+      }
+      if (price !== undefined && price > 0 && tx.price === 0) {
+        tx.price = price;
+        tx.volume = Math.abs(tx.balanceChange) * price;
+      }
     }
   }
 
